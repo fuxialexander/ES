@@ -1,4 +1,4 @@
-name: nt5c2
+name: es
 channels:
   - bioconda
   - conda-forge
@@ -257,4 +257,3 @@ dependencies:
     - urllib3==1.26.9
     - webcolors==1.11.1
     - websocket-client==0.54.0
-prefix: /home/ubuntu/miniconda3/envs/nt5c2
