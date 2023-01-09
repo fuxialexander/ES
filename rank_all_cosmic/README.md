@@ -1,0 +1,1 @@
+ES score calculation for all oncogenes using COSMIC database and monomer Alphafold structure predictions.

@@ -1,0 +1,1 @@
+ES score calculation for NT5C2 dimer.
