@@ -1,8 +1,6 @@
 # ES score: unsupervised prediction of cancer hotspot using evolutionary and structural information
 
 
-## Installation
-
 This should be rather fast as it's just visualizing all computed ES scores. (conda environment setup time depends on internet connection condition; the visualization time should be very minimal) 
 
 ```bash
