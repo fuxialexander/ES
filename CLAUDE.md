@@ -48,8 +48,20 @@ ES/
 ├── rank_all_cosmic/           # ES scores for ~302 cancer-related genes
 ├── bcr_abl1/                  # BCR-ABL1 fusion gene analysis
 ├── nt5c2_dimer/               # NT5C2 dimer structure analysis
-└── benchmark/                 # Benchmarking vs EVE, CTAT 3D methods
-    └── plot_roc.py            # ROC curve analysis
+└── benchmark/                 # Benchmarking pipelines
+    ├── plot_roc.py            # COSMIC/OncoKB ROC curve analysis
+    ├── plot_eve.py            # EVE model comparison
+    ├── proteingym/            # ProteinGym DMS benchmark (217 assays)
+    │   ├── run_benchmark.py   # Main pipeline
+    │   ├── proteingym_loader.py
+    │   ├── es_scorer.py
+    │   └── evaluate.py
+    └── variant_annotation/    # MSK-IMPACT NSCLC clinical benchmark
+        ├── run_benchmark.py   # Main pipeline
+        ├── download_data.py   # Data downloader
+        ├── data_loader.py     # Clinical/mutation loader
+        ├── es_scorer.py       # ES score computation
+        └── evaluate.py        # Survival analysis (Cox PH)
 ```
 
 ## Core Architecture
@@ -179,10 +191,26 @@ ABL1    315         0.892       hotspot
 3. Output: `input_dir/genes.txt.scores.txt`
 
 ### Running Benchmarks
+
+**1. COSMIC/OncoKB Benchmark** (ROC curves vs EVE, CTAT 3D):
 ```bash
 cd benchmark
-python plot_roc.py  # Generates ROC curves vs EVE, CTAT 3D
+python plot_roc.py
 ```
+
+**2. ProteinGym Benchmark** (217 DMS assays, Spearman correlation):
+```bash
+cd benchmark/proteingym
+python run_benchmark.py --full --max_assays 50
+```
+
+**3. Variant Annotation Benchmark** (MSK-IMPACT NSCLC, survival analysis):
+```bash
+cd benchmark/variant_annotation
+python run_benchmark.py --full
+```
+Based on [clinical-data-mining/variant-annotation](https://github.com/clinical-data-mining/variant-annotation).
+Reference: [Nature Communications (2025)](https://www.nature.com/articles/s41467-025-63461-8)
 
 ### Web Development
 ```bash
@@ -220,9 +248,10 @@ python app.py  # Dash server on port 4568
 ## Testing
 
 No formal test suite. Validation is performed via:
-- **Benchmarking**: `benchmark/plot_roc.py` generates ROC curves
+- **COSMIC/OncoKB**: `benchmark/plot_roc.py` - ROC curves vs EVE, CTAT 3D
+- **ProteinGym**: `benchmark/proteingym/` - Spearman correlation on 217 DMS assays
+- **Clinical Validation**: `benchmark/variant_annotation/` - Survival analysis on MSK-IMPACT NSCLC
 - **Statistical tests**: Mann-Whitney U tests in `plot_gs_rank.py`
-- **Comparison methods**: EVE, CTAT 3D
 
 ## Git Workflow
 
@@ -251,8 +280,18 @@ No formal test suite. Validation is performed via:
 2. Verify pLDDT file format (tab-separated, comma-separated values)
 3. Confirm gene name mappings
 
+### When working with benchmarks:
+1. **COSMIC/OncoKB**: `benchmark/plot_roc.py` - modify scoring methods or add new baselines
+2. **ProteinGym**: `benchmark/proteingym/` - modular pipeline with separate loader, scorer, evaluator
+3. **Variant Annotation**: `benchmark/variant_annotation/` - clinical validation with survival analysis
+   - Requires `lifelines` package for full Cox PH analysis
+   - Downloads data from [clinical-data-mining/variant-annotation](https://github.com/clinical-data-mining/variant-annotation)
+   - Compares ES Score with 13 VEP predictors (SIFT, PolyPhen, CADD, REVEL, AlphaMissense, etc.)
+
 ## External Resources
 
 - **AlphaFold pLDDT data**: https://github.com/normandavey/ProcessedAlphafold
 - **COSMIC database**: https://cancer.sanger.ac.uk/cosmic
 - **ESM models**: https://github.com/facebookresearch/esm
+- **ProteinGym**: https://proteingym.org/
+- **Variant Annotation**: https://github.com/clinical-data-mining/variant-annotation
