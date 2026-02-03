@@ -4,8 +4,29 @@ Combines evolutionary (ESM language model) and structural (AlphaFold pLDDT) info
 
 ## Quick Start
 
+### Using UV (Recommended)
+
 ```bash
 git clone git@github.com:fuxialexander/ES.git
+cd ES
+
+# Install UV if not already installed
+# See: https://docs.astral.sh/uv/getting-started/installation/
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
+
+# Run web visualization
+cd website
+uv run python app.py  # Runs on port 4568
+```
+
+### Using Conda (Legacy)
+
+```bash
+git clone git@github.com:fuxialexander/ES.git
+cd ES
 conda env create -f environment.yml
 conda activate es
 cd website
@@ -17,7 +38,7 @@ python app.py  # Runs on port 4568
 ### Compute ES Scores for New Genes
 
 ```bash
-python plot.py --transition cosmic_aa_transition.csv --gap 5 --interaction 15 \
+uv run python plot.py --transition cosmic_aa_transition.csv --gap 5 --interaction 15 \
   --hotspot 0.1 --kernel 10 --smooth_method 'gaussian' \
   plddt/9606.pLDDT.tdt uniprot_to_genename.txt {data_folder} genes.txt
 ```
@@ -32,7 +53,7 @@ Example data: [rank_all_cosmic/](https://github.com/fuxialexander/ES/tree/main/r
 ### Generate Visualizations
 
 ```bash
-python plot.py --plot --transition cosmic_aa_transition.csv --gap 5 --interaction 15 \
+uv run python plot.py --plot --transition cosmic_aa_transition.csv --gap 5 --interaction 15 \
   --hotspot 0.1 --kernel 10 --smooth_method 'gaussian' \
   plddt/9606.pLDDT.tdt uniprot_to_genename.txt {data_folder} genes.txt
 ```
@@ -46,7 +67,7 @@ ROC curve analysis comparing ES Score against EVE, CTAT 3D, and other methods us
 
 ```bash
 cd benchmark
-python plot_roc.py
+uv run python plot_roc.py
 ```
 
 ### 2. ProteinGym Benchmark
@@ -54,15 +75,18 @@ Evaluation against 217 Deep Mutational Scanning (DMS) assays from ProteinGym.
 
 ```bash
 cd benchmark/proteingym
-python run_benchmark.py --full --max_assays 50
+uv run python run_benchmark.py --full --max_assays 50
 ```
 
 ### 3. Variant Annotation Benchmark (MSK-IMPACT NSCLC)
 Real-world clinical validation using survival outcomes from 7,965 NSCLC patients.
 
 ```bash
+# Install survival analysis dependencies (lifelines)
+uv sync --extra survival
+
 cd benchmark/variant_annotation
-python run_benchmark.py --full
+uv run python run_benchmark.py --full
 ```
 
 Based on [clinical-data-mining/variant-annotation](https://github.com/clinical-data-mining/variant-annotation) and [Nature Communications (2025)](https://www.nature.com/articles/s41467-025-63461-8).
