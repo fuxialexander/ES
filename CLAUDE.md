@@ -48,6 +48,9 @@ ES/
 ├── data.feather               # Serialized data (Git LFS tracked)
 ├── cosmic.feather             # COSMIC mutation data (Git LFS tracked)
 │
+├── tests/                     # Unit tests
+│   └── test_proteingym.py     # ProteinGym benchmark tests (40 tests)
+│
 ├── website/                   # Dash-based interactive web application
 │   ├── app.py                 # Main web app entry point
 │   └── data.csv               # Precomputed ES scores for display
@@ -263,7 +266,16 @@ uv run python app.py  # Dash server on port 4568
 
 ## Testing
 
-No formal test suite. Validation is performed via:
+Unit tests are available in the `tests/` directory. Run with:
+```bash
+uv run pytest tests/ -v
+```
+
+Test coverage includes:
+- **ProteinGym benchmark**: `tests/test_proteingym.py` - 40 tests covering mutation parsing, DMS data loading, evaluation metrics (Spearman, AUC, MCC, NDCG, Top-K recall), ES scorer, and full pipeline integration
+  - Uses dummy predictors to test pipeline without requiring large data files
+
+Validation benchmarks:
 - **COSMIC/OncoKB**: `benchmark/plot_roc.py` - ROC curves vs EVE, CTAT 3D
 - **ProteinGym**: `benchmark/proteingym/` - Spearman correlation on 217 DMS assays
 - **Clinical Validation**: `benchmark/variant_annotation/` - Survival analysis on MSK-IMPACT NSCLC
