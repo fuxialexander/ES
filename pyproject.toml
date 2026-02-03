@@ -1,0 +1,130 @@
+[project]
+name = "es-score"
+version = "0.1.0"
+description = "Unsupervised prediction of cancer mutation hotspots using evolutionary and structural signals"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "fuxialexander" }
+]
+keywords = ["bioinformatics", "cancer", "mutations", "alphafold", "esm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    # Core scientific computing
+    "numpy>=1.22",
+    "pandas>=1.4",
+    "scipy>=1.8",
+
+    # Bioinformatics
+    "biopython>=1.79",
+    "pyensembl>=2.0",
+
+    # Visualization
+    "matplotlib>=3.5",
+    "seaborn>=0.11",
+    "plotly>=5.9",
+    "adjusttext>=0.7",
+
+    # Machine learning / statistics
+    "scikit-learn>=1.0",
+    "statannot>=0.2.3",
+    "statannotations>=0.4",
+
+    # Web application
+    "dash>=2.7",
+    "flask>=2.1",
+
+    # Data serialization
+    "pyarrow>=8.0",
+
+    # Utilities
+    "tqdm>=4.62",
+    "requests>=2.27",
+]
+
+[project.optional-dependencies]
+# Survival analysis (for variant annotation benchmark)
+survival = [
+    "lifelines>=0.27",
+]
+
+# Development tools
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+
+# All optional dependencies
+all = [
+    "es-score[survival]",
+]
+
+[project.urls]
+Homepage = "https://github.com/fuxialexander/ES"
+Repository = "https://github.com/fuxialexander/ES"
+
+[project.scripts]
+es-score = "plot:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default argument
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

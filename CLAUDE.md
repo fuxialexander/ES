@@ -12,17 +12,22 @@
 ## Quick Reference
 
 ```bash
-# Setup environment
+# Setup environment (using UV - recommended)
+uv sync                          # Install dependencies
+uv sync --extra survival         # Include survival analysis (lifelines)
+uv sync --extra all              # Install all optional dependencies
+
+# Alternative: Setup environment (using Conda - legacy)
 conda env create -f environment.yml
 conda activate es
 
 # Run main analysis
-python plot.py --transition cosmic_aa_transition.csv --gap 5 --interaction 15 \
+uv run python plot.py --transition cosmic_aa_transition.csv --gap 5 --interaction 15 \
   --hotspot 0.1 --kernel 10 --smooth_method 'gaussian' \
   plddt/9606.pLDDT.tdt uniprot_to_genename.txt {data_folder} genes.txt
 
 # Run web visualization
-cd website && python app.py  # Runs on port 4568
+cd website && uv run python app.py  # Runs on port 4568
 ```
 
 ## Directory Structure
@@ -35,7 +40,9 @@ ES/
 ├── cosmic_aa_transition.py    # COSMIC mutation data parser
 ├── bcr_abl1_lddt.py           # BCR-ABL1 pLDDT score extraction
 ├── plot_slim_interface.py     # SLiM/interface mutation analysis
-├── environment.yml            # Conda environment (200+ dependencies)
+├── pyproject.toml             # UV/pip dependencies and project config
+├── .python-version            # Python version for UV
+├── environment.yml            # Conda environment (legacy, 200+ dependencies)
 ├── uniprot_to_genename.txt    # UniProt ID ↔ Gene name mapping
 ├── cosmic_aa_transition.csv   # Amino acid transition probability matrix
 ├── data.feather               # Serialized data (Git LFS tracked)
@@ -195,19 +202,21 @@ ABL1    315         0.892       hotspot
 **1. COSMIC/OncoKB Benchmark** (ROC curves vs EVE, CTAT 3D):
 ```bash
 cd benchmark
-python plot_roc.py
+uv run python plot_roc.py
 ```
 
 **2. ProteinGym Benchmark** (217 DMS assays, Spearman correlation):
 ```bash
 cd benchmark/proteingym
-python run_benchmark.py --full --max_assays 50
+uv run python run_benchmark.py --full --max_assays 50
 ```
 
 **3. Variant Annotation Benchmark** (MSK-IMPACT NSCLC, survival analysis):
 ```bash
+# Requires survival extra for lifelines package
+uv sync --extra survival
 cd benchmark/variant_annotation
-python run_benchmark.py --full
+uv run python run_benchmark.py --full
 ```
 Based on [clinical-data-mining/variant-annotation](https://github.com/clinical-data-mining/variant-annotation).
 Reference: [Nature Communications (2025)](https://www.nature.com/articles/s41467-025-63461-8)
@@ -215,23 +224,30 @@ Reference: [Nature Communications (2025)](https://www.nature.com/articles/s41467
 ### Web Development
 ```bash
 cd website
-python app.py  # Dash server on port 4568
+uv run python app.py  # Dash server on port 4568
 ```
 
 ## Dependencies
 
-**Package Manager**: Conda (environment.yml)
+**Package Manager**: UV (pyproject.toml) - recommended
+- `uv sync` - Install core dependencies
+- `uv sync --extra survival` - Include lifelines for survival analysis
+- `uv sync --extra dev` - Include development tools
+- `uv sync --extra all` - Install all optional dependencies
+
+**Legacy**: Conda (environment.yml) - still supported but not recommended
 
 **Key Libraries**:
-- **Bioinformatics**: BioPython (1.79), PyEnsembl (2.0.1)
-- **Data**: pandas (1.4.1), numpy (1.22.2), scipy (1.8.0)
-- **ML**: scikit-learn (1.0.2)
-- **Visualization**: matplotlib (3.5.1), plotly (5.9.0), seaborn (0.11.2)
-- **Web**: Dash (2.7.0)
-- **Statistics**: statannot (0.2.3), statsmodels (0.13.2)
-- **Serialization**: PyArrow (8.0.0) for Feather format
+- **Bioinformatics**: BioPython (>=1.79), PyEnsembl (>=2.0)
+- **Data**: pandas (>=1.4), numpy (>=1.22), scipy (>=1.8)
+- **ML**: scikit-learn (>=1.0)
+- **Visualization**: matplotlib (>=3.5), plotly (>=5.9), seaborn (>=0.11)
+- **Web**: Dash (>=2.7)
+- **Statistics**: statannot (>=0.2.3), statannotations (>=0.4)
+- **Serialization**: PyArrow (>=8.0) for Feather format
+- **Survival Analysis** (optional): lifelines (>=0.27)
 
-**Python Version**: 3.10.2
+**Python Version**: 3.10+
 
 ## Special Cases
 

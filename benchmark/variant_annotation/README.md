@@ -16,14 +16,17 @@ Based on the methodology from:
 ## Quick Start
 
 ```bash
+# Install dependencies including lifelines for survival analysis
+uv sync --extra survival
+
 # Run full benchmark pipeline
-python run_benchmark.py --full
+uv run python run_benchmark.py --full
 
 # Quick test (ES Score only)
-python run_benchmark.py --full --quick
+uv run python run_benchmark.py --full --quick
 
 # With custom output directory
-python run_benchmark.py --full --output_dir ./my_benchmark
+uv run python run_benchmark.py --full --output_dir ./my_benchmark
 ```
 
 ## Data
@@ -56,7 +59,7 @@ The benchmark uses MSK-IMPACT NSCLC data:
 ### Full Pipeline
 
 ```bash
-python run_benchmark.py --full --output_dir ./variant_annotation_benchmark
+uv run python run_benchmark.py --full --output_dir ./variant_annotation_benchmark
 ```
 
 This will:
@@ -69,13 +72,13 @@ This will:
 
 ```bash
 # 1. Download data only
-python run_benchmark.py --download --output_dir ./benchmark
+uv run python run_benchmark.py --download --output_dir ./benchmark
 
 # 2. Score mutations only
-python run_benchmark.py --score --data_dir ./benchmark/data --output_dir ./benchmark
+uv run python run_benchmark.py --score --data_dir ./benchmark/data --output_dir ./benchmark
 
 # 3. Evaluate only
-python run_benchmark.py --evaluate --data_dir ./benchmark/data --output_dir ./benchmark/results
+uv run python run_benchmark.py --evaluate --data_dir ./benchmark/data --output_dir ./benchmark/results
 ```
 
 ### Options
@@ -122,14 +125,15 @@ variant_annotation_benchmark/
 ## Requirements
 
 ```bash
-# Core requirements
-pip install numpy pandas scipy scikit-learn matplotlib tqdm
+# Using UV (recommended)
+uv sync --extra survival  # Includes lifelines for survival analysis
 
-# For survival analysis (recommended)
-pip install lifelines
+# Or using pip
+pip install -e ../..
+pip install lifelines  # For survival analysis
 
-# Or install all via conda
-conda env create -f environment.yml
+# Legacy: using conda
+conda env create -f ../../environment.yml
 ```
 
 ## Methodology

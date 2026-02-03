@@ -19,13 +19,13 @@ This module provides:
 
 ```bash
 # Run the complete pipeline (download, score, evaluate)
-python run_benchmark.py --full --output_dir ./proteingym_results
+uv run python run_benchmark.py --full --output_dir ./proteingym_results
 
 # Quick test with 10 assays
-python run_benchmark.py --full --max_assays 10 --output_dir ./test_results
+uv run python run_benchmark.py --full --max_assays 10 --output_dir ./test_results
 
 # Just download data
-python run_benchmark.py --download --output_dir ./proteingym_data
+uv run python run_benchmark.py --download --output_dir ./proteingym_data
 ```
 
 ## Pipeline Components
@@ -35,7 +35,7 @@ python run_benchmark.py --download --output_dir ./proteingym_data
 Downloads ProteinGym datasets from the official source.
 
 ```bash
-python download_data.py --output_dir ./data --dataset substitutions reference
+uv run python download_data.py --output_dir ./data --dataset substitutions reference
 ```
 
 Available datasets:
@@ -197,7 +197,15 @@ auc = compute_auc(predictions, binary_labels)
 - matplotlib
 - tqdm
 
-All dependencies are included in the project's `environment.yml`.
+All dependencies are included in the project's `pyproject.toml` and can be installed with:
+
+```bash
+# Using UV (recommended)
+uv sync
+
+# Or using pip
+pip install -e ../..
+```
 
 ## References
 
