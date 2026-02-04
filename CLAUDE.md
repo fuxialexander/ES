@@ -205,12 +205,54 @@ ABL1    1           0.234       not_mutated
 ABL1    315         0.892       hotspot
 ```
 
+### ESM LLR Data Files
+
+**Gene format** (`esm_ALL_hotspot/{GENE_NAME}.csv`):
+```
+Index,Mutation,Gene,ESM1b_LLR
+0,M1A,ABL1,-8.605289
+1,M1C,ABL1,-10.025587
+```
+
+**UniProt format** (`esm1b_LLR/{UNIPROT_ID}_LLR.csv`):
+```
+,M 1,L 2,E 3,...
+A,-8.605289,-4.376268,-3.344538,...
+C,-10.025587,-5.234567,-4.123456,...
+```
+
 ## Development Workflow
 
+### Generating ESM LLR Data
+The ES Score algorithm requires ESM (Evolutionary Scale Modeling) log-likelihood ratio scores.
+Generate them using the `scripts/generate_esm_llr.py` script:
+
+```bash
+# Requires fair-esm and PyTorch with CUDA
+# Install: pip install fair-esm torch
+
+# Generate ESM LLR for a single gene
+python scripts/generate_esm_llr.py --gene ABL1 --output_dir /mnt/storage/es/data
+
+# Generate for a list of genes
+python scripts/generate_esm_llr.py --gene_list /mnt/storage/ES/raw/combined_cancer_genes_list.txt \
+    --output_dir /mnt/storage/es/data --skip_existing
+
+# Generate for a specific UniProt ID with sequence
+python scripts/generate_esm_llr.py --uniprot P00519 --output_dir /mnt/storage/es/data
+```
+
+**Notes:**
+- ESM1b model has a 1024 token limit; longer sequences use sliding window approach
+- Output is saved to `/mnt/storage/es/data/esm_ALL_hotspot/` and `/mnt/storage/es/data/esm1b_LLR/`
+- Symlinks in the project root point to these data directories
+- GPU acceleration recommended (uses CUDA if available)
+
 ### Adding a New Gene Analysis
-1. Create input directory with `genes.txt` and `mutations.txt`
-2. Run: `python plot.py ... input_dir genes.txt`
-3. Output: `input_dir/genes.txt.scores.txt`
+1. Ensure ESM LLR data exists for the gene (see above)
+2. Create input directory with `genes.txt` and `mutations.txt`
+3. Run: `python plot.py ... input_dir genes.txt`
+4. Output: `input_dir/genes.txt.scores.txt`
 
 ### Running Benchmarks
 
