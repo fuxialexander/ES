@@ -224,6 +224,12 @@ uv run python plot_roc.py
 ```bash
 cd benchmark/proteingym
 uv run python run_benchmark.py --full --max_assays 50
+
+# With AlphaMissense comparison (requires bulk data in /mnt/storage/alphamissense)
+uv run python run_benchmark.py --full --max_assays 50 --include_alphamissense
+
+# Download AlphaMissense bulk data first if needed (~1.2 GB)
+python -m benchmark.alphamissense.fetcher --download --data_dir /mnt/storage/alphamissense
 ```
 
 **3. Variant Annotation Benchmark** (MSK-IMPACT NSCLC, survival analysis):
