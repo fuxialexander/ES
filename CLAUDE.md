@@ -66,12 +66,18 @@ ES/
     │   ├── proteingym_loader.py
     │   ├── es_scorer.py
     │   └── evaluate.py
-    └── variant_annotation/    # MSK-IMPACT NSCLC clinical benchmark
+    ├── variant_annotation/    # MSK-IMPACT NSCLC clinical benchmark
+    │   ├── run_benchmark.py   # Main pipeline
+    │   ├── download_data.py   # Data downloader
+    │   ├── data_loader.py     # Clinical/mutation loader
+    │   ├── es_scorer.py       # ES score computation
+    │   └── evaluate.py        # Survival analysis (Cox PH)
+    └── clinvar/               # ClinVar pathogenic variant benchmark
         ├── run_benchmark.py   # Main pipeline
-        ├── download_data.py   # Data downloader
-        ├── data_loader.py     # Clinical/mutation loader
+        ├── download_data.py   # ClinVar data downloader
+        ├── clinvar_loader.py  # Pathogenic/benign variant loader
         ├── es_scorer.py       # ES score computation
-        └── evaluate.py        # Survival analysis (Cox PH)
+        └── evaluate.py        # Classification metrics (AUC-ROC, MCC, etc.)
 ```
 
 ## Core Architecture
@@ -224,6 +230,27 @@ uv run python run_benchmark.py --full
 Based on [clinical-data-mining/variant-annotation](https://github.com/clinical-data-mining/variant-annotation).
 Reference: [Nature Communications (2025)](https://www.nature.com/articles/s41467-025-63461-8)
 
+**4. ClinVar Pathogenic Variant Benchmark** (pathogenic vs benign classification):
+```bash
+cd benchmark/clinvar
+uv run python run_benchmark.py --full
+
+# Cancer genes only (COSMIC Cancer Gene Census)
+uv run python run_benchmark.py --full --cancer-genes-only
+
+# Use ProteinGym pre-processed clinical data
+uv run python run_benchmark.py --full --source proteingym
+
+# Filter by minimum review status (2+ stars for higher confidence)
+uv run python run_benchmark.py --full --min-stars 2
+```
+Uses ClinVar pathogenic/benign variant classifications as ground truth.
+Key differences from vanilla ClinVar:
+- Only pathogenic and benign variants (excludes VUS)
+- Optional filtering by review status (1-4 stars)
+- Focuses on missense variants for protein-level analysis
+- Can use ProteinGym's curated clinical_substitutions (~500K variants)
+
 ### Web Development
 ```bash
 cd website
@@ -279,6 +306,7 @@ Validation benchmarks:
 - **COSMIC/OncoKB**: `benchmark/plot_roc.py` - ROC curves vs EVE, CTAT 3D
 - **ProteinGym**: `benchmark/proteingym/` - Spearman correlation on 217 DMS assays
 - **Clinical Validation**: `benchmark/variant_annotation/` - Survival analysis on MSK-IMPACT NSCLC
+- **ClinVar Classification**: `benchmark/clinvar/` - AUC-ROC, AUC-PR, MCC for pathogenic/benign classification
 - **Statistical tests**: Mann-Whitney U tests in `plot_gs_rank.py`
 
 ## Git Workflow
@@ -315,6 +343,11 @@ Validation benchmarks:
    - Requires `lifelines` package for full Cox PH analysis
    - Downloads data from [clinical-data-mining/variant-annotation](https://github.com/clinical-data-mining/variant-annotation)
    - Compares ES Score with 13 VEP predictors (SIFT, PolyPhen, CADD, REVEL, AlphaMissense, etc.)
+4. **ClinVar**: `benchmark/clinvar/` - pathogenic/benign variant classification
+   - Downloads from NCBI ClinVar or uses ProteinGym's curated clinical_substitutions
+   - Evaluates AUC-ROC, AUC-PR, MCC, sensitivity, specificity
+   - Optional filtering by review status (1-4 stars) and cancer genes (COSMIC CGC)
+   - Comparison with ProteinGym clinical benchmark methodology
 
 ## External Resources
 
@@ -323,3 +356,4 @@ Validation benchmarks:
 - **ESM models**: https://github.com/facebookresearch/esm
 - **ProteinGym**: https://proteingym.org/
 - **Variant Annotation**: https://github.com/clinical-data-mining/variant-annotation
+- **ClinVar database**: https://www.ncbi.nlm.nih.gov/clinvar/
