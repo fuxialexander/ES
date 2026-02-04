@@ -35,12 +35,14 @@ import pandas as pd
 
 # Add parent directory to path
 SCRIPT_DIR = Path(__file__).parent.absolute()
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from download_data import download_dataset, DATASETS
 from proteingym_loader import ProteinGymLoader, get_assay_statistics
 from es_scorer import ESScorer, create_scorer_from_project
 from alphamissense_scorer import AlphaMissenseScorer, create_alphamissense_scorer
+from plddt_scorer import PLDDTScorer, create_plddt_scorer_from_project
 from evaluate import (
     evaluate_benchmark,
     results_to_dataframe,
@@ -190,6 +192,63 @@ def run_alphamissense_scoring(
     return scored_assays
 
 
+def run_plddt_scoring(
+    data_dir: Path,
+    output_dir: Path,
+    max_assays: Optional[int] = None,
+    single_only: bool = True,
+    smooth_kernel: int = 10,
+) -> Dict[str, pd.DataFrame]:
+    """Score all assays with pLDDT-only scores (structural signal without evolutionary info)"""
+    print("\n" + "="*60)
+    print("Computing pLDDT-only Scores")
+    print("="*60)
+
+    # Create loader
+    loader = ProteinGymLoader(data_dir)
+    assay_ids = loader.list_assays()
+
+    if max_assays:
+        assay_ids = assay_ids[:max_assays]
+
+    print(f"Found {len(assay_ids)} assays to process")
+
+    # Create pLDDT scorer
+    try:
+        scorer = create_plddt_scorer_from_project(smooth_kernel=smooth_kernel)
+    except Exception as e:
+        print(f"Error creating pLDDT scorer: {e}")
+        print("Trying with minimal configuration...")
+        scorer = PLDDTScorer(
+            plddt_file=PROJECT_ROOT / "plddt" / "9606.pLDDT.tdt",
+            uniprot_mapping_file=PROJECT_ROOT / "uniprot_to_genename.txt",
+            smooth_kernel=smooth_kernel,
+        )
+
+    # Score all assays
+    scored_assays = scorer.score_all_assays(
+        loader,
+        assay_ids=assay_ids,
+        single_only=single_only
+    )
+
+    print(f"Successfully scored {len(scored_assays)} assays with pLDDT-only")
+
+    # Save intermediate results
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scored_path = output_dir / "plddt_scored_variants.csv"
+
+    if scored_assays:
+        all_scored = pd.concat(
+            [df.assign(assay_id=aid) for aid, df in scored_assays.items()],
+            ignore_index=True
+        )
+        all_scored.to_csv(scored_path, index=False)
+        print(f"Saved pLDDT scored variants to: {scored_path}")
+
+    return scored_assays
+
+
 def run_evaluation(
     scored_assays: Dict[str, pd.DataFrame],
     output_dir: Path,
@@ -236,14 +295,16 @@ def run_evaluation(
 def compare_with_baselines(
     results: BenchmarkResults,
     alphamissense_results: Optional[BenchmarkResults] = None,
+    plddt_results: Optional[BenchmarkResults] = None,
     baseline_dir: Optional[Path] = None
 ) -> pd.DataFrame:
     """
-    Compare ES Score results with ProteinGym baselines and AlphaMissense.
+    Compare ES Score results with ProteinGym baselines, AlphaMissense, and pLDDT-only.
 
     Args:
         results: ES Score benchmark results
         alphamissense_results: AlphaMissense benchmark results (if computed)
+        plddt_results: pLDDT-only benchmark results (if computed)
         baseline_dir: Directory containing baseline results from ProteinGym
 
     Returns:
@@ -260,6 +321,16 @@ def compare_with_baselines(
         "Mean AUC": results.mean_auc,
         "N Assays": results.n_assays_evaluated
     }]
+
+    # Add pLDDT-only results if computed
+    if plddt_results is not None:
+        comparisons.append({
+            "Method": plddt_results.method_name,
+            "Mean Spearman": plddt_results.mean_spearman,
+            "Std Spearman": plddt_results.std_spearman,
+            "Mean AUC": plddt_results.mean_auc,
+            "N Assays": plddt_results.n_assays_evaluated
+        })
 
     # Add AlphaMissense results if computed
     if alphamissense_results is not None:
@@ -310,6 +381,7 @@ def run_full_pipeline(
     smooth_kernel: int = 10,
     use_3d: bool = False,
     include_alphamissense: bool = False,
+    include_plddt: bool = False,
     am_data_dir: str = "/mnt/storage/alphamissense",
 ):
     """Run the complete benchmark pipeline"""
@@ -318,6 +390,8 @@ def run_full_pipeline(
     print(f"Started: {datetime.now().isoformat()}")
     if include_alphamissense:
         print("Including AlphaMissense comparison")
+    if include_plddt:
+        print("Including pLDDT-only comparison")
     print("="*60)
 
     data_dir = output_dir / "data"
@@ -346,7 +420,25 @@ def run_full_pipeline(
     # Step 3: Evaluate ES Score
     results = run_evaluation(scored_assays, results_dir)
 
-    # Step 4: AlphaMissense scoring and evaluation (optional)
+    # Step 4: pLDDT-only scoring and evaluation (optional)
+    plddt_results = None
+    if include_plddt:
+        plddt_scored_assays = run_plddt_scoring(
+            data_dir,
+            results_dir,
+            max_assays=max_assays,
+            smooth_kernel=smooth_kernel,
+        )
+
+        if plddt_scored_assays:
+            plddt_results_dir = results_dir / "plddt"
+            plddt_results = run_evaluation(
+                plddt_scored_assays,
+                plddt_results_dir,
+                method_name="pLDDT-only",
+            )
+
+    # Step 5: AlphaMissense scoring and evaluation (optional)
     am_results = None
     if include_alphamissense:
         am_scored_assays = run_alphamissense_scoring(
@@ -364,8 +456,12 @@ def run_full_pipeline(
                 method_name="AlphaMissense",
             )
 
-    # Step 5: Compare
-    comparison = compare_with_baselines(results, alphamissense_results=am_results)
+    # Step 6: Compare
+    comparison = compare_with_baselines(
+        results,
+        alphamissense_results=am_results,
+        plddt_results=plddt_results,
+    )
     comparison.to_csv(results_dir / "comparison.csv", index=False)
 
     print("\n" + "="*60)
@@ -471,6 +567,11 @@ Examples:
         help="Include AlphaMissense comparison in benchmark"
     )
     parser.add_argument(
+        "--include_plddt",
+        action="store_true",
+        help="Include pLDDT-only comparison in benchmark (structural signal without evolutionary info)"
+    )
+    parser.add_argument(
         "--am_data_dir",
         type=str,
         default="/mnt/storage/alphamissense",
@@ -488,6 +589,7 @@ Examples:
             smooth_kernel=args.smooth_kernel,
             use_3d=args.use_3d,
             include_alphamissense=args.include_alphamissense,
+            include_plddt=args.include_plddt,
             am_data_dir=args.am_data_dir,
         )
 

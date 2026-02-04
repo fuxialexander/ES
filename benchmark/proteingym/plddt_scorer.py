@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """
-ES Score Calculator for ProteinGym
+pLDDT Scorer for ProteinGym
 
-Computes ES (Evolutionary-Structural) scores for ProteinGym benchmark proteins.
-Integrates with the ES Score project's scoring pipeline.
+Computes pLDDT-based scores for ProteinGym benchmark proteins.
+Uses only the structural gradient signal without evolutionary information.
 """
 
-import os
 import sys
-import gzip
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 from tqdm import tqdm
 
-# Add parent directories to path for ES Score imports
+# Add parent directories to path
 SCRIPT_DIR = Path(__file__).parent.absolute()
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -27,54 +25,37 @@ from proteingym_loader import (
     ProteinGymLoader,
     parse_mutation,
     is_single_mutation,
-    get_mutation_positions
 )
 
 
-class ESScorer:
+class PLDDTScorer:
     """
-    Compute ES scores for ProteinGym proteins.
+    Compute pLDDT-based scores for ProteinGym proteins.
 
-    ES Score = normalized(gradient(pLDDT) * ESM_score)
-
-    Where:
-    - pLDDT: AlphaFold confidence scores
-    - ESM_score: Evolutionary scores from ESM language model
+    Uses only the structural gradient signal derived from AlphaFold pLDDT scores.
+    This serves as a baseline to compare against the full ES Score.
     """
 
     def __init__(
         self,
         plddt_file: Union[str, Path],
         uniprot_mapping_file: Union[str, Path],
-        esm_dir: Optional[Union[str, Path]] = None,
-        structures_dir: Optional[Union[str, Path]] = None,
         smooth_kernel: int = 10,
         smooth_method: str = 'gaussian',
-        interaction_threshold: int = 15,
-        use_3d: bool = False
     ):
         """
-        Initialize ES Scorer.
+        Initialize pLDDT Scorer.
 
         Args:
             plddt_file: Path to AlphaFold pLDDT scores file
             uniprot_mapping_file: Path to UniProt to gene name mapping
-            esm_dir: Directory containing ESM scores (optional)
-            structures_dir: Directory containing AlphaFold structures
             smooth_kernel: Smoothing kernel size for pLDDT
             smooth_method: 'gaussian' or 'conv'
-            interaction_threshold: Angstrom threshold for 3D interactions
-            use_3d: Whether to use 3D spatial averaging
         """
         self.plddt_file = Path(plddt_file)
         self.uniprot_mapping_file = Path(uniprot_mapping_file)
-        self.esm_dir = Path(esm_dir) if esm_dir else None
-        self.structures_dir = Path(structures_dir) if structures_dir else None
-
         self.smooth_kernel = smooth_kernel
         self.smooth_method = smooth_method
-        self.interaction_threshold = interaction_threshold
-        self.use_3d = use_3d
 
         # Load mappings
         self._load_plddt()
@@ -82,7 +63,6 @@ class ESScorer:
 
         # Cache for computed scores
         self._score_cache = {}
-        self._esm_cache = {}
 
     def _load_plddt(self):
         """Load pLDDT scores from file"""
@@ -129,79 +109,22 @@ class ESScorer:
         grad = np.gradient(f) ** 2
         return self._normalize(grad)
 
-    def _load_esm_scores(self, uniprot_id: str) -> Optional[np.ndarray]:
-        """Load ESM scores for a protein"""
-        if uniprot_id in self._esm_cache:
-            return self._esm_cache[uniprot_id]
-
-        if self.esm_dir is None:
-            return None
-
-        # Try different filename patterns
-        patterns = [
-            self.esm_dir / f"{uniprot_id}_LLR.csv",
-            self.esm_dir / f"{uniprot_id}.csv",
-        ]
-
-        for path in patterns:
-            if path.exists():
-                try:
-                    df = pd.read_csv(path, index_col=0)
-                    # Average ESM scores across all mutations at each position
-                    esm_scores = -df.mean(axis=0).values
-                    esm_scores = self._normalize(esm_scores)
-                    self._esm_cache[uniprot_id] = esm_scores
-                    return esm_scores
-                except Exception as e:
-                    print(f"Warning: Failed to load ESM for {uniprot_id}: {e}")
-
-        return None
-
-    def _load_esm_for_gene(self, gene_name: str) -> Optional[np.ndarray]:
-        """Load ESM scores using gene name"""
-        esm_gene_dir = PROJECT_ROOT / "esm_ALL_hotspot"
-        path = esm_gene_dir / f"{gene_name}.csv"
-
-        if path.exists():
-            try:
-                df = pd.read_csv(path)
-                df['esm'] = df.iloc[:, 3:].astype(float).mean(axis=1)
-
-                # Extract position from mutation string
-                df['pos'] = df['Mutation'].apply(lambda x: int(x[1:-1]))
-
-                # Aggregate by position
-                pos_esm = df.groupby('pos')['esm'].mean()
-
-                # Create full-length array
-                max_pos = pos_esm.index.max()
-                esm_scores = np.zeros(max_pos)
-                for pos, score in pos_esm.items():
-                    if 0 < pos <= max_pos:
-                        esm_scores[pos - 1] = -score
-
-                return self._normalize(esm_scores)
-            except Exception as e:
-                print(f"Warning: Failed to load ESM for gene {gene_name}: {e}")
-
-        return None
-
-    def compute_es_scores(
+    def compute_plddt_scores(
         self,
         uniprot_id: str,
         gene_name: Optional[str] = None,
         seq_length: Optional[int] = None
     ) -> Optional[np.ndarray]:
         """
-        Compute ES scores for a protein.
+        Compute pLDDT-based scores for a protein.
 
         Args:
             uniprot_id: UniProt accession ID
-            gene_name: Optional gene name (used for ESM lookup and UniProt fallback)
+            gene_name: Optional gene name (used for UniProt fallback)
             seq_length: Expected sequence length (for validation)
 
         Returns:
-            Array of ES scores for each position, or None if computation fails
+            Array of pLDDT-based scores for each position, or None if computation fails
         """
         cache_key = f"{uniprot_id}_{gene_name}"
         if cache_key in self._score_cache:
@@ -231,7 +154,6 @@ class ESScorer:
                 lookup_uniprot = self.gene_to_uniprot[gene_upper]
                 if lookup_uniprot in self.plddt:
                     plddt = self.plddt[lookup_uniprot]
-                    uniprot_id = lookup_uniprot  # Update for ESM lookup
 
         if plddt is None:
             return None
@@ -245,29 +167,10 @@ class ESScorer:
 
         # Clip to reduce outliers
         grad = np.clip(grad, np.quantile(grad, 0.2), np.quantile(grad, 0.8))
-        grad = self._normalize(grad)
+        plddt_scores = self._normalize(grad)
 
-        # Get ESM evolutionary scores
-        esm_scores = None
-        if gene_name:
-            esm_scores = self._load_esm_for_gene(gene_name)
-        if esm_scores is None:
-            esm_scores = self._load_esm_scores(uniprot_id)
-        if esm_scores is None:
-            # Use uniform ESM if not available
-            esm_scores = np.ones_like(plddt)
-
-        # Ensure matching lengths
-        min_len = min(len(grad), len(esm_scores))
-        grad = grad[:min_len]
-        esm_scores = esm_scores[:min_len]
-
-        # Compute ES score
-        es_scores = grad * esm_scores
-        es_scores = self._normalize(es_scores)
-
-        self._score_cache[cache_key] = es_scores
-        return es_scores
+        self._score_cache[cache_key] = plddt_scores
+        return plddt_scores
 
     def score_mutations(
         self,
@@ -275,23 +178,23 @@ class ESScorer:
         single_only: bool = True
     ) -> pd.DataFrame:
         """
-        Score all mutations in a DMS assay.
+        Score all mutations in a DMS assay using pLDDT-based scoring.
 
         Args:
             assay: DMSAssay object
             single_only: Only score single-point mutations
 
         Returns:
-            DataFrame with ES scores for each mutation
+            DataFrame with pLDDT scores for each mutation
         """
-        # Get protein-level ES scores
-        es_scores = self.compute_es_scores(
+        # Get protein-level pLDDT scores
+        plddt_scores = self.compute_plddt_scores(
             assay.uniprot_id,
             gene_name=assay.gene_name,
             seq_length=len(assay.target_seq) if assay.target_seq else None
         )
 
-        if es_scores is None:
+        if plddt_scores is None:
             return pd.DataFrame()
 
         results = []
@@ -309,21 +212,21 @@ class ESScorer:
             if not mutations:
                 continue
 
-            # Get ES score for mutation position(s)
+            # Get pLDDT score for mutation position(s)
             mutation_scores = []
             for wt, pos, mt in mutations:
-                if 0 < pos <= len(es_scores):
-                    mutation_scores.append(es_scores[pos - 1])
+                if 0 < pos <= len(plddt_scores):
+                    mutation_scores.append(plddt_scores[pos - 1])
 
             if not mutation_scores:
                 continue
 
             # For multi-mutations, use mean of position scores
-            es_score = np.mean(mutation_scores)
+            plddt_score = np.mean(mutation_scores)
 
             results.append({
                 "mutant": mutant,
-                "es_score": es_score,
+                "plddt_score": plddt_score,
                 "DMS_score": row.get("DMS_score"),
                 "DMS_score_bin": row.get("DMS_score_bin"),
                 "n_mutations": len(mutations),
@@ -357,7 +260,7 @@ class ESScorer:
         results = {}
         failed = []
 
-        for assay_id in tqdm(assay_ids, desc="Scoring assays"):
+        for assay_id in tqdm(assay_ids, desc="Scoring assays with pLDDT"):
             try:
                 assay = loader.load_assay(assay_id)
                 scored = self.score_mutations(assay, single_only=single_only)
@@ -370,7 +273,7 @@ class ESScorer:
                 failed.append((assay_id, str(e)))
 
         if failed:
-            print(f"\nFailed to score {len(failed)} assays:")
+            print(f"\nFailed to score {len(failed)} assays with pLDDT:")
             for assay_id, reason in failed[:5]:
                 print(f"  {assay_id}: {reason}")
             if len(failed) > 5:
@@ -379,28 +282,26 @@ class ESScorer:
         return results
 
 
-def create_scorer_from_project(
+def create_plddt_scorer_from_project(
     project_root: Optional[Path] = None,
     **kwargs
-) -> ESScorer:
+) -> PLDDTScorer:
     """
-    Create an ESScorer using the ES Score project's default files.
+    Create a PLDDTScorer using the ES Score project's default files.
 
     Args:
         project_root: Path to ES Score project root
-        **kwargs: Additional arguments for ESScorer
+        **kwargs: Additional arguments for PLDDTScorer
 
     Returns:
-        Configured ESScorer instance
+        Configured PLDDTScorer instance
     """
     if project_root is None:
         project_root = PROJECT_ROOT
 
-    return ESScorer(
+    return PLDDTScorer(
         plddt_file=project_root / "plddt" / "9606.pLDDT.tdt",
         uniprot_mapping_file=project_root / "uniprot_to_genename.txt",
-        esm_dir=project_root / "esm1b" / "content" / "ALL_hum_isoforms_ESM1b_LLR",
-        structures_dir=project_root / "structures",
         **kwargs
     )
 
@@ -408,19 +309,17 @@ def create_scorer_from_project(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="ES Score calculator for ProteinGym")
+    parser = argparse.ArgumentParser(description="pLDDT-only scorer for ProteinGym")
     parser.add_argument("data_dir", type=str, help="ProteinGym data directory")
     parser.add_argument("--assay", type=str, help="Score specific assay")
     parser.add_argument("--output", type=str, help="Output CSV file")
     parser.add_argument("--smooth_kernel", type=int, default=10)
-    parser.add_argument("--use_3d", action="store_true")
 
     args = parser.parse_args()
 
     # Create scorer
-    scorer = create_scorer_from_project(
+    scorer = create_plddt_scorer_from_project(
         smooth_kernel=args.smooth_kernel,
-        use_3d=args.use_3d
     )
 
     # Load data

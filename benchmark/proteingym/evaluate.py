@@ -332,6 +332,8 @@ def evaluate_benchmark(
             sample_df = list(scored_assays.values())[0]
             if "am_score" in sample_df.columns:
                 score_col = "am_score"
+            elif "plddt_score" in sample_df.columns:
+                score_col = "plddt_score"
             else:
                 score_col = "es_score"
         else:
