@@ -43,6 +43,7 @@ from benchmark.proteingym.run_benchmark import (
 from benchmark.proteingym.proteingym_loader import ProteinGymLoader
 from benchmark.proteingym.es_scorer import ESScorer, create_scorer_from_project
 from benchmark.proteingym.alphamissense_scorer import AlphaMissenseScorer, create_alphamissense_scorer
+from benchmark.proteingym.esm_scorer import ESMLLRScorer, create_esm_llr_scorer
 
 
 def create_comparison_visualization(
@@ -291,15 +292,71 @@ def run_alphamissense_scoring_human_only(
     return scored_assays
 
 
+def run_esm_llr_scoring_human_only(
+    data_dir: Path,
+    output_dir: Path,
+    max_assays: int = None,
+):
+    """
+    Score human-only assays with ESM LLR directly.
+
+    This uses ESM log-likelihood ratios without the pLDDT gradient component,
+    to understand the contribution of evolutionary signal alone.
+    """
+    print("\n" + "=" * 60)
+    print("Computing ESM LLR Scores (Human proteins only)")
+    print("=" * 60)
+
+    # Create loader and filter for human assays
+    loader = ProteinGymLoader(data_dir)
+    all_assay_ids = loader.list_assays()
+    human_assay_ids = [a for a in all_assay_ids if "HUMAN" in a]
+
+    if max_assays:
+        human_assay_ids = human_assay_ids[:max_assays]
+
+    print(f"Scoring {len(human_assay_ids)} human assays with ESM LLR")
+
+    # Create ESM LLR scorer
+    try:
+        scorer = create_esm_llr_scorer()
+    except Exception as e:
+        print(f"Error creating ESM LLR scorer: {e}")
+        scorer = ESMLLRScorer()
+
+    # Score all human assays
+    scored_assays = scorer.score_all_assays(
+        loader,
+        assay_ids=human_assay_ids,
+        single_only=True
+    )
+
+    print(f"Successfully scored {len(scored_assays)} assays with ESM LLR")
+
+    # Save intermediate results
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if scored_assays:
+        all_scored = pd.concat(
+            [df.assign(assay_id=aid) for aid, df in scored_assays.items()],
+            ignore_index=True
+        )
+        scored_path = output_dir / "esm_llr_scored.csv"
+        all_scored.to_csv(scored_path, index=False)
+        print(f"Saved ESM LLR scored variants to: {scored_path}")
+
+    return scored_assays
+
+
 def run_benchmark(
     output_dir: Path,
     max_assays: int = None,
     skip_download: bool = False,
     am_data_dir: str = "/mnt/storage/alphamissense",
     human_only: bool = True,
+    include_esm_llr: bool = True,
 ):
     """
-    Run ES Score vs AlphaMissense benchmark.
+    Run ES Score vs AlphaMissense (and optionally ESM LLR) benchmark.
 
     Args:
         output_dir: Directory to save all results
@@ -307,9 +364,14 @@ def run_benchmark(
         skip_download: Skip data download step
         am_data_dir: Directory containing AlphaMissense bulk data
         human_only: Only benchmark on human proteins (default True, required for ES Score)
+        include_esm_llr: Include ESM LLR direct comparison (default True)
     """
+    n_steps = 6 if include_esm_llr else 5
+
     print("\n" + "=" * 70)
     print("ES Score vs AlphaMissense Benchmark on ProteinGym")
+    if include_esm_llr:
+        print("(Including ESM LLR direct comparison)")
     print(f"Started: {datetime.now().isoformat()}")
     if human_only:
         print("Mode: Human proteins only (required for ES Score pLDDT data)")
@@ -322,16 +384,16 @@ def run_benchmark(
 
     # Step 1: Download ProteinGym data
     if not skip_download:
-        print("\n[Step 1/5] Downloading ProteinGym data...")
+        print(f"\n[Step 1/{n_steps}] Downloading ProteinGym data...")
         success = run_download(data_dir)
         if not success:
             print("ERROR: Failed to download data")
             return None
     else:
-        print("\n[Step 1/5] Skipping download (--skip_download)")
+        print(f"\n[Step 1/{n_steps}] Skipping download (--skip_download)")
 
     # Step 2: Compute ES Scores (human only)
-    print("\n[Step 2/5] Computing ES Scores...")
+    print(f"\n[Step 2/{n_steps}] Computing ES Scores...")
     es_scored_assays = run_scoring_human_only(
         data_dir,
         results_dir,
@@ -345,7 +407,7 @@ def run_benchmark(
         return None
 
     # Step 3: Compute AlphaMissense Scores (human only)
-    print("\n[Step 3/5] Computing AlphaMissense Scores...")
+    print(f"\n[Step 3/{n_steps}] Computing AlphaMissense Scores...")
     am_scored_assays = run_alphamissense_scoring_human_only(
         data_dir,
         results_dir,
@@ -357,18 +419,75 @@ def run_benchmark(
         print("ERROR: No assays were scored with AlphaMissense")
         return None
 
-    # Step 4: Evaluate both methods
-    print("\n[Step 4/5] Evaluating performance...")
+    # Step 4: Compute ESM LLR Scores (optional)
+    esm_results = None
+    if include_esm_llr:
+        print(f"\n[Step 4/{n_steps}] Computing ESM LLR Scores...")
+        esm_scored_assays = run_esm_llr_scoring_human_only(
+            data_dir,
+            results_dir,
+            max_assays=max_assays,
+        )
+
+        if esm_scored_assays:
+            esm_results = run_evaluation(
+                esm_scored_assays,
+                results_dir / "esm_llr",
+                method_name="ESM LLR"
+            )
+        else:
+            print("WARNING: No assays were scored with ESM LLR")
+
+    # Step 5: Evaluate methods
+    step_num = 5 if include_esm_llr else 4
+    print(f"\n[Step {step_num}/{n_steps}] Evaluating performance...")
 
     es_results = run_evaluation(es_scored_assays, results_dir / "es_score", method_name="ES Score")
     am_results = run_evaluation(am_scored_assays, results_dir / "alphamissense", method_name="AlphaMissense")
 
-    # Step 5: Generate comparison
-    print("\n[Step 5/5] Generating comparison...")
+    # Step 6: Generate comparison
+    step_num = 6 if include_esm_llr else 5
+    print(f"\n[Step {step_num}/{n_steps}] Generating comparison...")
 
-    # Compare methods
-    comparison_df = compare_with_baselines(es_results, alphamissense_results=am_results)
+    # Compare methods - include ESM LLR in comparison if available
+    all_results = [es_results, am_results]
+    if esm_results:
+        all_results.append(esm_results)
+
+    # Build comparison dataframe
+    comparison_rows = []
+    for result in all_results:
+        comparison_rows.append({
+            "Method": result.method_name,
+            "Mean Spearman": result.mean_spearman,
+            "Std Spearman": result.std_spearman,
+            "Mean AUC": result.mean_auc,
+            "N Assays": result.n_assays_evaluated
+        })
+
+    # Add baseline references
+    known_baselines = {
+        "ESM-1v (zero-shot)": {"spearman": 0.42, "auc": None},
+        "EVE": {"spearman": 0.45, "auc": None},
+        "Tranception L": {"spearman": 0.46, "auc": None},
+        "MSA Transformer": {"spearman": 0.43, "auc": None},
+        "VESPA": {"spearman": 0.44, "auc": None},
+    }
+    for method, metrics in known_baselines.items():
+        comparison_rows.append({
+            "Method": method + " (reference)",
+            "Mean Spearman": metrics["spearman"],
+            "Std Spearman": None,
+            "Mean AUC": metrics["auc"],
+            "N Assays": "217"
+        })
+
+    comparison_df = pd.DataFrame(comparison_rows)
+    comparison_df = comparison_df.sort_values("Mean Spearman", ascending=False)
     comparison_df.to_csv(results_dir / "method_comparison.csv", index=False)
+
+    print("\nMethod Comparison (sorted by Spearman):")
+    print(comparison_df.to_string(index=False))
 
     # Load detailed results for visualization
     es_results_df = pd.read_csv(results_dir / "es_score" / "detailed_results.csv")
@@ -383,6 +502,7 @@ def run_benchmark(
             "date": datetime.now().isoformat(),
             "max_assays": max_assays,
             "am_data_dir": am_data_dir,
+            "include_esm_llr": include_esm_llr,
         },
         "es_score": {
             "n_assays": es_results.n_assays_evaluated,
@@ -404,6 +524,17 @@ def run_benchmark(
         },
     }
 
+    # Add ESM LLR results if available
+    if esm_results:
+        summary["esm_llr"] = {
+            "n_assays": esm_results.n_assays_evaluated,
+            "mean_spearman": esm_results.mean_spearman,
+            "std_spearman": esm_results.std_spearman,
+            "mean_auc": esm_results.mean_auc,
+            "std_auc": esm_results.std_auc,
+        }
+        summary["comparison"]["es_vs_esm_llr_spearman"] = es_results.mean_spearman - esm_results.mean_spearman
+
     with open(results_dir / "benchmark_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -423,10 +554,24 @@ def run_benchmark(
     if am_results.mean_auc:
         print(f"  - Mean AUC: {am_results.mean_auc:.4f} ± {am_results.std_auc:.4f}")
 
-    print(f"\nDifference (ES - AM):")
-    diff = es_results.mean_spearman - am_results.mean_spearman
-    winner = "ES Score" if diff > 0 else "AlphaMissense"
-    print(f"  - Spearman ρ: {diff:+.4f} ({winner} performs better)")
+    if esm_results:
+        print(f"\nESM LLR (Evolutionary signal only):")
+        print(f"  - Assays evaluated: {esm_results.n_assays_evaluated}")
+        print(f"  - Mean Spearman ρ: {esm_results.mean_spearman:.4f} ± {esm_results.std_spearman:.4f}")
+        if esm_results.mean_auc:
+            print(f"  - Mean AUC: {esm_results.mean_auc:.4f} ± {esm_results.std_auc:.4f}")
+
+    print(f"\nComparison:")
+    diff_es_am = es_results.mean_spearman - am_results.mean_spearman
+    winner_es_am = "ES Score" if diff_es_am > 0 else "AlphaMissense"
+    print(f"  - ES vs AM Spearman ρ: {diff_es_am:+.4f} ({winner_es_am} performs better)")
+
+    if esm_results:
+        diff_es_esm = es_results.mean_spearman - esm_results.mean_spearman
+        winner_es_esm = "ES Score" if diff_es_esm > 0 else "ESM LLR"
+        print(f"  - ES vs ESM LLR Spearman ρ: {diff_es_esm:+.4f} ({winner_es_esm} performs better)")
+        diff_esm_am = esm_results.mean_spearman - am_results.mean_spearman
+        print(f"  - ESM LLR vs AM Spearman ρ: {diff_esm_am:+.4f}")
 
     print(f"\nResults saved to: {results_dir}")
     print("=" * 70)

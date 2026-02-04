@@ -24,8 +24,21 @@ uv run python run_es_vs_alphamissense.py --skip_download --max_assays 50
    ```
 
 2. **ESM LLR data** should exist in the project's `esm1b_LLR/` and `esm_ALL_hotspot/` directories.
+   - The ESM LLR data was generated for ~1225 cancer genes using the COSMIC Cancer Gene Census
+   - Not all ProteinGym genes have ESM data, so ESM LLR evaluation may have fewer assays
+   - Symlinks should point to `/mnt/storage/es/data/esm1b_LLR` and `/mnt/storage/es/data/esm_ALL_hotspot`
 
 3. **pLDDT data** should exist in `plddt/9606.pLDDT.tdt`.
+
+## Three-Way Comparison
+
+The benchmark compares three scoring methods:
+1. **ES Score**: Combined evolutionary (ESM) and structural (pLDDT gradient) signals
+2. **AlphaMissense**: Google DeepMind's pathogenicity predictor
+3. **ESM LLR**: Raw evolutionary signal from ESM language model (without pLDDT)
+
+ESM LLR provides a baseline to understand the contribution of the evolutionary signal alone
+vs the combined ES Score (evolutionary + structural).
 
 ## Output Structure
 
