@@ -61,6 +61,12 @@ ES/
 └── benchmark/                 # Benchmarking pipelines
     ├── plot_roc.py            # COSMIC/OncoKB ROC curve analysis
     ├── plot_eve.py            # EVE model comparison
+    ├── alphamissense/         # AlphaMissense prediction fetcher
+    │   ├── README.md          # Usage documentation
+    │   ├── fetcher.py         # Main unified interface
+    │   ├── data_loader.py     # Bulk data loading from Zenodo
+    │   ├── ensembl_client.py  # Ensembl VEP REST API client
+    │   └── hegelab_client.py  # HegeLab web resource client
     ├── proteingym/            # ProteinGym DMS benchmark (217 assays)
     │   ├── run_benchmark.py   # Main pipeline
     │   ├── proteingym_loader.py
@@ -218,6 +224,12 @@ uv run python plot_roc.py
 ```bash
 cd benchmark/proteingym
 uv run python run_benchmark.py --full --max_assays 50
+
+# With AlphaMissense comparison (requires bulk data in /mnt/storage/alphamissense)
+uv run python run_benchmark.py --full --max_assays 50 --include_alphamissense
+
+# Download AlphaMissense bulk data first if needed (~1.2 GB)
+python -m benchmark.alphamissense.fetcher --download --data_dir /mnt/storage/alphamissense
 ```
 
 **3. Variant Annotation Benchmark** (MSK-IMPACT NSCLC, survival analysis):
@@ -255,6 +267,31 @@ Key differences from vanilla ClinVar:
 ```bash
 cd website
 uv run python app.py  # Dash server on port 4568
+```
+
+### AlphaMissense Predictions
+```bash
+# Download bulk data (once, ~1.2 GB to /mnt/storage)
+python -m benchmark.alphamissense.fetcher --download --data_dir /mnt/storage/alphamissense
+
+# Query a variant
+python -m benchmark.alphamissense.fetcher --uniprot P00533 --variant L858R
+
+# Or use Ensembl VEP API for small queries
+python -m benchmark.alphamissense.ensembl_client --hgvs "ENST00000275493:c.2573T>G"
+```
+
+Python usage:
+```python
+from benchmark.alphamissense import AlphaMissenseFetcher, EnsemblVEPClient
+
+# Bulk data (for large-scale analysis)
+fetcher = AlphaMissenseFetcher(data_dir="/mnt/storage/alphamissense")
+result = fetcher.get_score("P00533", "L858R")  # Returns (score, classification)
+
+# Or Ensembl VEP API (for small queries)
+client = EnsemblVEPClient()
+result = client.get_alphamissense_hgvs("ENST00000275493:c.2573T>G")
 ```
 
 ## Dependencies

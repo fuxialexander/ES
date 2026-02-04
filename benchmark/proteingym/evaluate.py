@@ -2,12 +2,21 @@
 """
 ProteinGym Evaluation Pipeline
 
-Evaluates ES scores against ProteinGym DMS benchmarks using standard metrics:
+Evaluates variant effect prediction scores against ProteinGym DMS benchmarks
+using standard metrics:
 - Spearman correlation
 - NDCG (Normalized Discounted Cumulative Gain)
 - AUC (Area Under ROC Curve)
 - MCC (Matthews Correlation Coefficient)
 - Top-K Recall
+
+Supports both ES Score and AlphaMissense prediction methods.
+
+Note on score direction:
+- ES Score and AlphaMissense: higher values indicate more pathogenic/deleterious
+- DMS Score: higher values typically indicate better fitness
+- Therefore, a NEGATIVE Spearman correlation is expected for pathogenicity predictors
+- AUC > 0.5 indicates good discrimination of fit vs non-fit variants
 """
 
 import os
@@ -301,7 +310,8 @@ def evaluate_assay(
 def evaluate_benchmark(
     scored_assays: Dict[str, pd.DataFrame],
     method_name: str = "ES Score",
-    min_variants: int = 10
+    min_variants: int = 10,
+    score_col: Optional[str] = None,
 ) -> BenchmarkResults:
     """
     Evaluate all assays and aggregate results.
@@ -310,10 +320,23 @@ def evaluate_benchmark(
         scored_assays: Dictionary mapping assay_id to scored DataFrame
         method_name: Name of the method being evaluated
         min_variants: Minimum variants required for evaluation
+        score_col: Column name for predictions (auto-detected if None)
 
     Returns:
         BenchmarkResults with aggregated metrics
     """
+    # Auto-detect score column if not specified
+    if score_col is None:
+        # Check first assay to determine score column
+        if scored_assays:
+            sample_df = list(scored_assays.values())[0]
+            if "am_score" in sample_df.columns:
+                score_col = "am_score"
+            else:
+                score_col = "es_score"
+        else:
+            score_col = "es_score"
+
     assay_results = []
     failed = 0
 
@@ -323,7 +346,7 @@ def evaluate_benchmark(
             continue
 
         try:
-            result = evaluate_assay(df, assay_id)
+            result = evaluate_assay(df, assay_id, score_col=score_col)
             if not np.isnan(result.spearman_rho):
                 assay_results.append(result)
             else:

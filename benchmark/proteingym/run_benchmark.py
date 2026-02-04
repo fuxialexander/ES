@@ -3,10 +3,14 @@
 ProteinGym Benchmark Runner
 
 Automated pipeline for evaluating ES scores against ProteinGym DMS benchmarks.
+Supports comparison with AlphaMissense predictions.
 
 Usage:
     # Full pipeline (download, score, evaluate)
     python run_benchmark.py --full
+
+    # Full pipeline with AlphaMissense comparison
+    python run_benchmark.py --full --include_alphamissense
 
     # Just download data
     python run_benchmark.py --download
@@ -36,6 +40,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from download_data import download_dataset, DATASETS
 from proteingym_loader import ProteinGymLoader, get_assay_statistics
 from es_scorer import ESScorer, create_scorer_from_project
+from alphamissense_scorer import AlphaMissenseScorer, create_alphamissense_scorer
 from evaluate import (
     evaluate_benchmark,
     results_to_dataframe,
@@ -125,6 +130,66 @@ def run_scoring(
     return scored_assays
 
 
+def run_alphamissense_scoring(
+    data_dir: Path,
+    output_dir: Path,
+    max_assays: Optional[int] = None,
+    single_only: bool = True,
+    am_data_dir: str = "/mnt/storage/alphamissense",
+) -> Dict[str, pd.DataFrame]:
+    """Score all assays with AlphaMissense predictions"""
+    print("\n" + "="*60)
+    print("Computing AlphaMissense Scores")
+    print("="*60)
+
+    # Create loader
+    loader = ProteinGymLoader(data_dir)
+    assay_ids = loader.list_assays()
+
+    if max_assays:
+        assay_ids = assay_ids[:max_assays]
+
+    print(f"Found {len(assay_ids)} assays to process")
+
+    # Create AlphaMissense scorer
+    try:
+        scorer = create_alphamissense_scorer(data_dir=am_data_dir)
+    except Exception as e:
+        print(f"Error creating AlphaMissense scorer: {e}")
+        print("Trying with default configuration...")
+        scorer = AlphaMissenseScorer(data_dir=am_data_dir)
+
+    # Check if bulk data is available
+    if not scorer.has_bulk_data():
+        print("AlphaMissense bulk data not found.")
+        print(f"Please download it to: {am_data_dir}")
+        print("Run: python -m benchmark.alphamissense.fetcher --download --data_dir " + am_data_dir)
+        return {}
+
+    # Score all assays
+    scored_assays = scorer.score_all_assays(
+        loader,
+        assay_ids=assay_ids,
+        single_only=single_only
+    )
+
+    print(f"Successfully scored {len(scored_assays)} assays with AlphaMissense")
+
+    # Save intermediate results
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scored_path = output_dir / "alphamissense_scored_variants.csv"
+
+    if scored_assays:
+        all_scored = pd.concat(
+            [df.assign(assay_id=aid) for aid, df in scored_assays.items()],
+            ignore_index=True
+        )
+        all_scored.to_csv(scored_path, index=False)
+        print(f"Saved AlphaMissense scored variants to: {scored_path}")
+
+    return scored_assays
+
+
 def run_evaluation(
     scored_assays: Dict[str, pd.DataFrame],
     output_dir: Path,
@@ -170,13 +235,15 @@ def run_evaluation(
 
 def compare_with_baselines(
     results: BenchmarkResults,
+    alphamissense_results: Optional[BenchmarkResults] = None,
     baseline_dir: Optional[Path] = None
 ) -> pd.DataFrame:
     """
-    Compare ES Score results with ProteinGym baselines.
+    Compare ES Score results with ProteinGym baselines and AlphaMissense.
 
     Args:
         results: ES Score benchmark results
+        alphamissense_results: AlphaMissense benchmark results (if computed)
         baseline_dir: Directory containing baseline results from ProteinGym
 
     Returns:
@@ -194,6 +261,16 @@ def compare_with_baselines(
         "N Assays": results.n_assays_evaluated
     }]
 
+    # Add AlphaMissense results if computed
+    if alphamissense_results is not None:
+        comparisons.append({
+            "Method": alphamissense_results.method_name,
+            "Mean Spearman": alphamissense_results.mean_spearman,
+            "Std Spearman": alphamissense_results.std_spearman,
+            "Mean AUC": alphamissense_results.mean_auc,
+            "N Assays": alphamissense_results.n_assays_evaluated
+        })
+
     # Known baseline values from ProteinGym leaderboard (approximate)
     # These are reference values for comparison
     known_baselines = {
@@ -202,9 +279,13 @@ def compare_with_baselines(
         "Tranception L": {"spearman": 0.46, "auc": None},
         "MSA Transformer": {"spearman": 0.43, "auc": None},
         "VESPA": {"spearman": 0.44, "auc": None},
+        "AlphaMissense": {"spearman": 0.48, "auc": None},  # Reference from ProteinGym
     }
 
     for method, metrics in known_baselines.items():
+        # Skip AlphaMissense reference if we computed it
+        if method == "AlphaMissense" and alphamissense_results is not None:
+            continue
         comparisons.append({
             "Method": method + " (reference)",
             "Mean Spearman": metrics["spearman"],
@@ -227,12 +308,16 @@ def run_full_pipeline(
     max_assays: Optional[int] = None,
     skip_download: bool = False,
     smooth_kernel: int = 10,
-    use_3d: bool = False
+    use_3d: bool = False,
+    include_alphamissense: bool = False,
+    am_data_dir: str = "/mnt/storage/alphamissense",
 ):
     """Run the complete benchmark pipeline"""
     print("\n" + "="*60)
     print("ProteinGym Benchmark Pipeline")
     print(f"Started: {datetime.now().isoformat()}")
+    if include_alphamissense:
+        print("Including AlphaMissense comparison")
     print("="*60)
 
     data_dir = output_dir / "data"
@@ -245,7 +330,7 @@ def run_full_pipeline(
             print("Download failed. Exiting.")
             return None
 
-    # Step 2: Score
+    # Step 2: Score with ES Score
     scored_assays = run_scoring(
         data_dir,
         results_dir,
@@ -258,11 +343,29 @@ def run_full_pipeline(
         print("No assays were scored. Exiting.")
         return None
 
-    # Step 3: Evaluate
+    # Step 3: Evaluate ES Score
     results = run_evaluation(scored_assays, results_dir)
 
-    # Step 4: Compare
-    comparison = compare_with_baselines(results)
+    # Step 4: AlphaMissense scoring and evaluation (optional)
+    am_results = None
+    if include_alphamissense:
+        am_scored_assays = run_alphamissense_scoring(
+            data_dir,
+            results_dir,
+            max_assays=max_assays,
+            am_data_dir=am_data_dir,
+        )
+
+        if am_scored_assays:
+            am_results_dir = results_dir / "alphamissense"
+            am_results = run_evaluation(
+                am_scored_assays,
+                am_results_dir,
+                method_name="AlphaMissense",
+            )
+
+    # Step 5: Compare
+    comparison = compare_with_baselines(results, alphamissense_results=am_results)
     comparison.to_csv(results_dir / "comparison.csv", index=False)
 
     print("\n" + "="*60)
@@ -362,6 +465,17 @@ Examples:
         action="store_true",
         help="Skip download step in --full mode"
     )
+    parser.add_argument(
+        "--include_alphamissense",
+        action="store_true",
+        help="Include AlphaMissense comparison in benchmark"
+    )
+    parser.add_argument(
+        "--am_data_dir",
+        type=str,
+        default="/mnt/storage/alphamissense",
+        help="Directory containing AlphaMissense bulk data"
+    )
 
     args = parser.parse_args()
     output_dir = Path(args.output_dir)
@@ -372,7 +486,9 @@ Examples:
             max_assays=args.max_assays,
             skip_download=args.skip_download,
             smooth_kernel=args.smooth_kernel,
-            use_3d=args.use_3d
+            use_3d=args.use_3d,
+            include_alphamissense=args.include_alphamissense,
+            am_data_dir=args.am_data_dir,
         )
 
     elif args.download:
