@@ -59,4 +59,12 @@ results/
 # Data symlinks (machine-specific paths)
 esm_ALL_hotspot
 esm1b
+esm1b_LLR
 pairwise_interaction/
+
+# pLDDT data (extracted from external sources)
+plddt/
+
+# Benchmark data and results (large files)
+benchmark_result/data/
+benchmark_result/results/

@@ -101,6 +101,9 @@ class ESScorer:
         if 'From' in df.columns and 'To' in df.columns:
             self.uniprot_to_gene = df.set_index('From')['To'].to_dict()
             self.gene_to_uniprot = df.set_index('To')['From'].to_dict()
+            # Also add uppercase gene names for case-insensitive lookup
+            for gene, uniprot in list(self.gene_to_uniprot.items()):
+                self.gene_to_uniprot[gene.upper()] = uniprot
         else:
             self.uniprot_to_gene = {}
             self.gene_to_uniprot = {}
@@ -194,7 +197,7 @@ class ESScorer:
 
         Args:
             uniprot_id: UniProt accession ID
-            gene_name: Optional gene name (used for ESM lookup)
+            gene_name: Optional gene name (used for ESM lookup and UniProt fallback)
             seq_length: Expected sequence length (for validation)
 
         Returns:
@@ -205,21 +208,33 @@ class ESScorer:
             return self._score_cache[cache_key]
 
         # Get pLDDT scores
-        if uniprot_id not in self.plddt:
+        plddt = None
+
+        # First, try direct UniProt ID lookup
+        if uniprot_id and uniprot_id in self.plddt:
+            plddt = self.plddt[uniprot_id]
+        elif uniprot_id:
             # Try alternative UniProt ID formats
             alt_ids = [
                 uniprot_id.split("-")[0],  # Remove isoform
                 uniprot_id.split(".")[0],  # Remove version
             ]
-            plddt = None
             for alt_id in alt_ids:
                 if alt_id in self.plddt:
                     plddt = self.plddt[alt_id]
                     break
-            if plddt is None:
-                return None
-        else:
-            plddt = self.plddt[uniprot_id]
+
+        # If still no pLDDT, try gene name -> UniProt lookup
+        if plddt is None and gene_name:
+            gene_upper = gene_name.upper()
+            if gene_upper in self.gene_to_uniprot:
+                lookup_uniprot = self.gene_to_uniprot[gene_upper]
+                if lookup_uniprot in self.plddt:
+                    plddt = self.plddt[lookup_uniprot]
+                    uniprot_id = lookup_uniprot  # Update for ESM lookup
+
+        if plddt is None:
+            return None
 
         # Normalize pLDDT to 0-1
         plddt = plddt / 100.0 if plddt.max() > 1 else plddt
