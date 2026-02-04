@@ -46,6 +46,11 @@ Thumbs.db
 *.h5
 *.hdf5
 
+# COSMIC data (stored in /mnt/storage/ES/raw/)
+CosmicMutantExport*.tsv
+rank_all_cosmic/mutations.txt
+rank_all_cosmic/mutations.txt.*
+
 # Output
 *.log
 output/
