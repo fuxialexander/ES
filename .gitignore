@@ -50,3 +50,8 @@ Thumbs.db
 *.log
 output/
 results/
+
+# Data symlinks (machine-specific paths)
+esm_ALL_hotspot
+esm1b
+pairwise_interaction/
